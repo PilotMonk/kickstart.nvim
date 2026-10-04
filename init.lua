@@ -97,9 +97,8 @@ do
   --  NOTE: Must happen before plugins are loaded (otherwise wrong leader will be used)
   vim.g.mapleader = ' '
   vim.g.maplocalleader = ' '
-
   -- Set to true if you have a Nerd Font installed and selected in the terminal
-  vim.g.have_nerd_font = false
+  vim.g.have_nerd_font = true
 
   -- [[ Setting options ]]
   --  See `:help vim.o`
@@ -111,6 +110,11 @@ do
   -- You can also add relative line numbers, to help with jumping.
   --  Experiment for yourself to see if you like it!
   -- vim.o.relativenumber = true
+
+  vim.o.tabstop = 4
+  vim.o.shiftwidth = 4
+  vim.o.expandtab = true
+
 
   -- Enable mouse mode, can be useful for resizing splits for example!
   vim.o.mouse = 'a'
@@ -194,8 +198,10 @@ do
     underline = { severity = { min = vim.diagnostic.severity.WARN } },
 
     -- Can switch between these as you prefer
-    virtual_text = true, -- Text shows up at the end of the line
-    virtual_lines = false, -- Text shows up underneath the line, with virtual lines
+    virtual_text = {
+        wrap = true,
+    }, -- Text shows up at the end of the line
+    virtual_lines = true, -- Text shows up underneath the line, with virtual lines
 
     -- Auto open the float, so you can easily read the errors when jumping with `[d` and `]d`
     jump = {
@@ -251,6 +257,21 @@ do
     group = vim.api.nvim_create_augroup('kickstart-highlight-yank', { clear = true }),
     callback = function() vim.hl.on_yank() end,
   })
+
+  -- [[ Filetype detection ]]
+  --  Terraform's HCL-based config files (query, stack, deploy) otherwise match the
+  --  generic `*.hcl` rule and end up as filetype `hcl`, which terraform-ls never attaches to.
+  vim.filetype.add {
+    pattern = {
+      ['.*%.tfquery%.hcl'] = 'terraform',
+      ['.*%.tfcomponent%.hcl'] = 'terraform',
+      ['.*%.tfdeploy%.hcl'] = 'terraform',
+      -- docker-compose-langserver only attaches to `yaml.docker-compose`, not plain `yaml`.
+      -- Covers docker-compose.yml, compose.yaml, docker-compose.override.yml, compose.dev.yaml etc.
+      ['.*/docker%-compose[^/]*%.ya?ml'] = 'yaml.docker-compose',
+      ['.*/compose[^/]*%.ya?ml'] = 'yaml.docker-compose',
+    },
+  }
 end
 
 -- ============================================================
@@ -676,7 +697,6 @@ do
           end,
         })
       end
-
       -- The following code creates a keymap to toggle inlay hints in your
       -- code, if the language server you are using supports them
       --
@@ -693,8 +713,22 @@ do
   ---@type table<string, vim.lsp.Config>
   local servers = {
     -- clangd = {},
-    -- gopls = {},
-    -- pyright = {},
+    gopls = {},
+    pyright = {},
+    docker_compose_language_service = {},
+
+    -- terraform-ls dispatches on the LSP language ID rather than the filetype, so the
+    -- HCL-based Terraform files have to be announced under their own IDs.
+    -- See https://github.com/hashicorp/terraform-ls/blob/main/docs/language-clients.md
+    terraformls = {
+      get_language_id = function(bufnr, filetype)
+        local name = vim.api.nvim_buf_get_name(bufnr)
+        if name:match '%.tfquery%.hcl$' then return 'terraform-search' end
+        if name:match '%.tfcomponent%.hcl$' then return 'terraform-stack' end
+        if name:match '%.tfdeploy%.hcl$' then return 'terraform-deploy' end
+        return filetype
+      end,
+    },
     -- rust_analyzer = {},
     --
     -- Some languages (like typescript) have entire language plugins that can be useful:
@@ -750,7 +784,7 @@ do
 
   -- Translates between nvim-lspconfig server names and mason.nvim package names (e.g. lua_ls <-> lua-language-server)
   require('mason-lspconfig').setup {
-    automatic_enable = false, -- Change this to true if you want to automatically enable servers that are installed manually (e.g. via :Mason / :MasonInstall)
+    automatic_enable = true, -- Change this to true if you want to automatically enable servers that are installed manually (e.g. via :Mason / :MasonInstall)
   }
 
   -- Ensure the servers and tools above are installed
@@ -763,6 +797,7 @@ do
   local ensure_installed = vim.tbl_keys(servers or {})
   vim.list_extend(ensure_installed, {
     -- You can add other tools here that you want Mason to install
+    "goimports",
   })
 
   require('mason-tool-installer').setup { ensure_installed = ensure_installed }
@@ -787,6 +822,9 @@ do
       local enabled_filetypes = {
         -- lua = true,
         -- python = true,
+        go = true,
+        sql = true,
+        terraform = true,
       }
       if enabled_filetypes[vim.bo[bufnr].filetype] then
         return { timeout_ms = 500 }
@@ -803,6 +841,9 @@ do
       -- Conform can also run multiple formatters sequentially
       -- python = { "isort", "black" },
       --
+      go = { 'goimports'},
+      sql = { 'pgformatter'},
+      terraform = { 'terraform_fmt' },
       -- You can use 'stop_after_first' to run the first available formatter from the list
       -- javascript = { "prettierd", "prettier", stop_after_first = true },
     },
@@ -855,7 +896,7 @@ do
       -- <c-k>: Toggle signature help
       --
       -- See `:help blink-cmp-config-keymap` for defining your own keymap
-      preset = 'default',
+      preset = 'super-tab',
 
       -- For more advanced Luasnip keymaps (e.g. selecting choice nodes, expansion) see:
       --    https://github.com/L3MON4D3/LuaSnip?tab=readme-ov-file#keymaps
@@ -984,3 +1025,9 @@ end
 
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et
+
+
+
+-- =========================
+-- coc.nvim config
+-- =========================
