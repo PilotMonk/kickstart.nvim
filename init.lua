@@ -366,6 +366,10 @@ do
   -- and then call its `setup()` function to start it with default settings.
   vim.pack.add { gh 'NMAC427/guess-indent.nvim' }
   require('guess-indent').setup {}
+  vim.pack.add({
+    'https://github.com/MeanderingProgrammer/render-markdown.nvim',
+  })
+  require('render-markdown').setup({})
 
   -- Here is a more advanced configuration example that passes options to `gitsigns.nvim`
   --
@@ -896,7 +900,20 @@ do
       -- <c-k>: Toggle signature help
       --
       -- See `:help blink-cmp-config-keymap` for defining your own keymap
-      preset = 'super-tab',
+      keymap = {
+        preset = 'super-tab',
+        ['<Tab>'] = {
+          function(cmp)
+            if cmp.snippet_active() then
+              return cmp.accept()
+            else
+              return cmp.select_and_accept()
+            end
+          end,
+          'fallback',
+        },
+        ['<S-Tab>'] = { 'fallback' },
+      },
 
       -- For more advanced Luasnip keymaps (e.g. selecting choice nodes, expansion) see:
       --    https://github.com/L3MON4D3/LuaSnip?tab=readme-ov-file#keymaps
